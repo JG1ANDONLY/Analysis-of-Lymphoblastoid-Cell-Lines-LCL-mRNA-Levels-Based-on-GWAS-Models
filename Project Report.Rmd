@@ -1,0 +1,376 @@
+---
+title: "Analysis of Lymphoblastoid Cell Lines (LCL) mRNA Levels from Four European Populations Based on GWAS Models"
+subtitle: "BTRY 4830 Final Project Report"
+author: "Zhongyi (James) Guo"
+date: "5/10/2022"
+output: pdf_document
+---
+
+Because of length limit, most code will be hidden from the report. Please refer to the attached RMD file for source code or result replication.
+
+# Introduction
+
+In this project, I performed GWAS analysis on the lymphoblastoid cell lines (LCL) mRNA levels quantified through RNA sequencing from 4 different European populations. I also analyzed genotype and phenotype data by employing two different strategies: excluding covariates or including covariates with 50,000 of the SNP genotypes for 344 samples from the `CEU` (Utah residents with European ancestry), `FIN` (Finns), `GBR` (British) and, `TSI` (Toscani) population.
+
+I am interested in studying if population and gender could cause the expression of lymphoblastoid cell lines (LCL) mRNA levels to be different. Hereby, I want to raise my research question:
+- Would population and gender as covariates influence the GWAS analysis result?
+
+# Data Cleaning and Exploratory Data Analysis (EDA)
+
+Here is the link to the data source: Genetic European Variation in Health and Disease (gEUVADIS) (http://www.internationalgenome.org/data-portal/data-collection/geuvadis/)
+
+The first step is to import all the datasets we need and rename the row names of each dataset.
+
+```{r, echo=FALSE}
+pheno <- read.csv("phenotypes.csv")
+rownames(pheno) <- pheno[, 1]
+pheno <- pheno[, -1]
+geno <- read.csv("genotypes.csv")
+rownames(geno) <- geno[, 1]
+geno <- geno[, -1]
+covars <- read.csv("covars.csv")
+rownames(covars) <- covars[, 1]
+covars <- covars[, -1]
+```
+
+I noticed all data in `covars` are of type string, which can cause trouble for downstream analysis. I will convert them to integer categorical data.
+
+```{r, echo=FALSE}
+covars$Sex <- ifelse(covars$Sex == "MALE", 1, 0)
+covars$Population <- unclass(factor(covars$Population))
+```
+
+Here is a documentation of `covars` data:
+- `Population`: `GBR`: 3; `FIN`: 2; `CEU`: 1; `TSI`: 4
+- `Sex`: `MALE`: 1; `FEMALE`: 0
+
+Then, I will check if any NA values or infinite values are present in each dataset.
+
+```{r, echo=FALSE}
+print(paste("Number of NA values or infinite values in genotype:", 
+            sum(apply(geno, 2, function(x) any(is.na(x) | is.infinite(x))))))
+print(paste("Number of NA values or infinite values in covariates:",
+            sum(apply(covars, 2, function(x) any(is.na(x) | is.infinite(x))))))
+print(paste("Number of NA values or infinite values in phenotype:",
+            sum(apply(pheno, 2, function(x) any(is.na(x) | is.infinite(x))))))
+```
+
+There are no NA values or infinite values in `geno`, `covars`, and `pheno`.
+
+Next, I will check if phenotype data are normally distributed using histogram and see if there are odd phenotypes or outliers, which need to be removed, using boxplot.
+
+```{r, echo=FALSE}
+par(mfrow = c(2, 3))
+hist(pheno$ENSG00000164308.12, xlab = "", main = "ENSG00000164308.12")
+hist(pheno$ENSG00000124587.9, xlab = "", main = "ENSG00000124587.9")
+hist(pheno$ENSG00000180185.7, xlab = "", main = "ENSG00000180185.7")
+hist(pheno$ENSG00000168827.9, xlab = "", main = "ENSG00000180185.7")
+hist(pheno$ENSG00000136536.9, xlab = "", main = "ENSG00000180185.7")
+```
+```{r, echo=FALSE}
+par(mfrow = c(2, 3))
+boxplot(pheno$ENSG00000164308.12, main = "ENSG00000164308.12")
+boxplot(pheno$ENSG00000124587.9, main = "ENSG00000124587.9")
+boxplot(pheno$ENSG00000180185.7, main = "ENSG00000180185.7")
+boxplot(pheno$ENSG00000168827.9, main = "ENSG00000168827.9")
+boxplot(pheno$ENSG00000136536.9, main = "ENSG00000136536.9")
+```
+
+All phenotypes are (approximately) normally distributed, and no odd phenotypes or outliers were detected. I think the data are ready for downstream analysis.
+
+```{r libraries, echo=FALSE}
+libs = c('tidyverse', 'data.table', 'MASS', 'ggthemes')
+suppressMessages(
+  suppressWarnings(sapply(libs, require, character.only = TRUE))
+)
+rm(libs)
+
+# Please uncomment the following code if you will run my code!
+# if(!require(devtools)) install.packages("devtools")
+# devtools::install_github("kassambara/ggpubr")
+# install.packages("ggpubr")
+library(ggpubr)
+```
+
+# Model Building, Data Visualization, and Step-by-Step Analysis
+
+I will calculate `xa_matrix` and `xd_matrix` respectively from `geno` data.
+
+```{r, echo = FALSE}
+xa_matrix <- geno - 1
+xd_matrix <- 1 - 2 * abs(xa_matrix)
+```
+
+```{r, echo=FALSE}
+make_manhattan_plot = function(res, plt.title){
+  ggplot(res, aes(x = index, y = -log10(p))) + geom_point(size = 0.01) + 
+    labs(x = 'Chromosome Index', y = '-log10 p value', title = plt.title)
+}
+
+make_qqplot = function(pvals, plt.title){
+  observed_pvals = sort(pvals)
+  expected_pvals=qunif(seq(0,1,length.out=length(observed_pvals)+2),min=0,max=1)
+  expected_pvals = expected_pvals[expected_pvals != 0 & expected_pvals != 1]
+  p_df = data.frame(observed = -log10(observed_pvals),
+                    expected = -log10(expected_pvals))
+  ggplot(p_df, aes(x = expected, y = observed)) + geom_point(size = 0.01) +
+    geom_abline(intercept = 0, slope = 1, color = 'red') + 
+    labs(x ='-log10 Expected p-val',y='-log10 Observed p-val', title=plt.title)
+}
+```
+
+## Linear Model excluding covariates
+
+```{r, echo=FALSE}
+lm_no_cov = function(xa_input, xd_input, pheno_input){
+  xa_input = as.numeric(xa_input)
+  xd_input = as.numeric(xd_input)
+  pheno_input = as.numeric(pheno_input)
+  n_samples <- length(xa_input)
+  X_mx <- cbind(1, xa_input, xd_input)
+  MLE_beta <- ginv(t(X_mx) %*% X_mx) %*% t(X_mx) %*% pheno_input
+  y_hat <- X_mx %*% MLE_beta
+  SSM <- sum((y_hat - mean(pheno_input))^2)
+  SSE <- sum((pheno_input - y_hat)^2)
+  df_M <- ncol(X_mx) - 1
+  df_E <- n_samples - ncol(X_mx)
+  MSM <- SSM / df_M
+  MSE <- SSE / df_E
+  Fstatistic <- MSM / MSE
+  pval <- pf(Fstatistic, df_M, df_E, lower.tail = FALSE)
+  return(data.table(f_statistic = Fstatistic, p = pval, model = 'No Covariate'))
+}
+```
+
+I will continue to calculate the results of each phenotypes with no covariates, and then create Manhattan plots and QQ plots for each of the phenotype.
+
+```{r, warning=FALSE, echo=FALSE, results='hide',fig.keep='all'}
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000164308.12)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan1 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000164308.12 (No Covariate)') + 
+  theme(text = element_text(size = 8))  
+qqplot1 <- make_qqplot(result$p, "ENSG00000164308.12 (No Covariate)") +
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000124587.9)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan2 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000124587.9 (No Covariate)') +
+  theme(text = element_text(size = 8))
+qqplot2 <- make_qqplot(result$p, "ENSG00000124587.9 (No Covariate)") + 
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000180185.7)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan3 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000180185.7 (No Covariate)') +
+  theme(text = element_text(size = 8))
+qqplot3 <- make_qqplot(result$p, "ENSG00000180185.7 (No Covariate)") +
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000168827.9)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan4 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000168827.9 (No Covariate)') +
+  theme(text = element_text(size = 8))
+qqplot4 <- make_qqplot(result$p, "ENSG00000168827.9 (No Covariate)") + 
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000136536.9)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan5 <- make_manhattan_plot(res = result,
+                                  plt.title = 'ENSG00000136536.9 (No Covariate)') +
+  theme(text = element_text(size = 8))
+qqplot5 <- make_qqplot(result$p, "ENSG00000136536.9 (No Covariate)") +
+  theme(text = element_text(size = 8))
+
+ggarrange(manhattan1, qqplot1, manhattan2, qqplot2, manhattan3, qqplot3, 
+          manhattan4, qqplot4, manhattan5, qqplot5, ncol = 2, nrow = 2)
+```
+
+For phenotype named `ENSG00000164308.12`, `ENSG00000124587.9`, and `ENSG00000180185.7`, the QQ plots have huge and uplifting tails, which indicate causal polymorphisms. I will locate the chromosome index where the causal mutations that possibly occur.
+
+```{r, echo = FALSE}
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000164308.12)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+index <- c()
+for (i in 1:nrow(result)) {
+  if (-log10(result[i, "p"]) >= 10) {
+    index <- append(index, as.numeric(result[i, "index"]))
+  }
+}
+print(paste("ENSG00000164308.12:", length(index), "possible causal polymorphism sites"))
+print(index)
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000124587.9)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+index <- c()
+for (i in 1:nrow(result)) {
+  if (-log10(result[i, "p"]) >= 10) {
+    index <- append(index, as.numeric(result[i, "index"]))
+  }
+}
+print(paste("ENSG00000124587.9:", length(index), "possible causal polymorphism sites"))
+print(index)
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_no_cov(xa_matrix[, column.counter], xd_matrix[, column.counter], pheno$ENSG00000180185.7)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+index <- c()
+for (i in 1:nrow(result)) {
+  if (-log10(result[i, "p"]) >= 10) {
+    index <- append(index, as.numeric(result[i, "index"]))
+  }
+}
+print(paste("ENSG00000180185.7:", length(index), "possible causal polymorphism sites"))
+print(index)
+```
+
+For phenotype of `ENSG00000168827.9` and `ENSG00000136536.9`, the QQ plots suggest that I should not interpret any of significant p-values as indicating locations of causal polymorphisms. This phenomenon can also possibly occur because we excluded covariates. So the next model we will build includes covariates.
+
+## Linear Model including covariates `Population` and `Sex`
+
+I originally planned to do `Population` or `Sex` separately, however that version of report exceeded the maximum length expected for this project, and also, they do not reveal very significant discovery. So I decided to stop doing `Population` or `Sex` separately but instead, include them both.
+
+```{r, echo=FALSE}
+lm_two_cov = function(pheno_input, xa_input, xd_input, xz_input, xh_input){
+  xa_input = as.numeric(xa_input)
+  xd_input = as.numeric(xd_input)
+  xz_input = as.numeric(xz_input)
+  xh_input = as.numeric(xh_input)
+  pheno_input = as.numeric(pheno_input)
+  n_samples = length(xa_input)
+  x_h1 = cbind(1 ,xa_input, xd_input, xz_input, xh_input)
+  MLE_h1 = ginv(t(x_h1) %*% x_h1) %*% t(x_h1) %*% pheno_input
+  x_h0 = cbind(1, xz_input)
+  MLE_h0 = ginv(t(x_h0) %*% x_h0) %*% t(x_h0) %*% pheno_input
+  y_hat_0 = x_h0 %*% MLE_h0
+  y_hat_1 = x_h1 %*% MLE_h1
+  SSE_theta_0 = sum((pheno_input - y_hat_0)^2)
+  SSE_theta_1 = sum((pheno_input - y_hat_1)^2)
+  df_M = ncol(x_h1) - ncol(x_h0)
+  df_E = n_samples - ncol(x_h1)
+  numerator = (SSE_theta_0 - SSE_theta_1) / df_M
+  denom = SSE_theta_1 / df_E
+  Fstatistic = numerator / denom
+  pval = pf(Fstatistic, df_M, df_E, lower.tail = FALSE)
+  return(data.table(f_statistic = Fstatistic, p = pval, model = 'Covariate'))
+}
+```
+
+```{r, echo=FALSE}
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000164308.12, xa_matrix[, column.counter], 
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan1 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000164308.12 (With Both Covariates)') +
+  theme(text = element_text(size = 8))
+qqplot1 <- make_qqplot(result$p, "ENSG00000164308.12 (With Both Covariates)") + 
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000124587.9, xa_matrix[, column.counter],
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan2 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000124587.9 (With Both Covariates)') +
+  theme(text = element_text(size = 8))
+qqplot2 <- make_qqplot(result$p, "ENSG00000124587.9 (With Both Covariates)") + 
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000180185.7, xa_matrix[, column.counter], 
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan3 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000180185.7 (With Both Covariates)') +
+  theme(text = element_text(size = 8))
+qqplot3 <- make_qqplot(result$p, "ENSG00000180185.7 (With Both Covariates)") + 
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000168827.9, xa_matrix[, column.counter],
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan4 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000168827.9 (With Both Covariates)') +
+  theme(text = element_text(size = 8))
+qqplot4 <- make_qqplot(result$p, "ENSG00000168827.9 (With Both Covariates)") + 
+  theme(text = element_text(size = 8))
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000136536.9, xa_matrix[, column.counter], xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+manhattan5 <- make_manhattan_plot(res = result, 
+                                  plt.title = 'ENSG00000136536.9 (With Both Covariates)') +
+  theme(text = element_text(size = 8))
+qqplot5 <- make_qqplot(result$p, "ENSG00000136536.9 (With Both Covariates)") + 
+  theme(text = element_text(size = 8))
+
+ggarrange(manhattan1, qqplot1, manhattan2, qqplot2, manhattan3, qqplot3, 
+          manhattan4, qqplot4, manhattan5, qqplot5, ncol = 2, nrow = 2)
+```
+
+Similarly to the model with no covariates, I observed huge uplifting tails in the QQ plots of phenotypes `ENSG00000164308.12`, `ENSG00000124587.9`, and `ENSG00000180185.7`. That suggests covariates (`Population` and `Sex` do not contribute much to the mRNA levels of lymphoblastoid cell lines (LCL)) among 4 populations. I will print out index and count of possible causal polymorphism sites.
+
+```{r, echo = FALSE}
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000164308.12, xa_matrix[, column.counter],
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+index <- c()
+for (i in 1:nrow(result)) {
+  if (-log10(result[i, "p"]) >= 10) {
+    index <- append(index, as.numeric(result[i, "index"]))
+  }
+}
+print(paste("ENSG00000164308.12:", length(index), "possible causal polymorphism sites"))
+print(index)
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000124587.9, xa_matrix[, column.counter],
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+index <- c()
+for (i in 1:nrow(result)) {
+  if (-log10(result[i, "p"]) >= 10) {
+    index <- append(index, as.numeric(result[i, "index"]))
+  }
+}
+print(paste("ENSG00000124587.9:", length(index), "possible causal polymorphism sites"))
+print(index)
+
+result <- lapply(1:ncol(xa_matrix), function(column.counter){
+  lm_two_cov(pheno$ENSG00000180185.7, xa_matrix[, column.counter],
+             xd_matrix[, column.counter], covars$Population, covars$Sex)
+}) %>% rbindlist() %>% mutate(index = 1:ncol(xa_matrix))
+index <- c()
+for (i in 1:nrow(result)) {
+  if (-log10(result[i, "p"]) >= 10) {
+    index <- append(index, as.numeric(result[i, "index"]))
+  }
+}
+print(paste("ENSG00000180185.7:", length(index), "possible causal polymorphism sites"))
+print(index)
+```
+
+For `ENSG00000168827.9` and `ENSG00000136536.9`, compared to the QQ plots with no covariates, I saw tails occured, which suggests covariates improve the performance of my GWAS model.
+
+
+# Discussion
+
+There are some possible further research that we can carry out in the future. For example, we can refer to UCSC genome browser for nucleotide/codon letters and then hypothesize the mRNA levels. This will require a lot of biochemistry backgrounds.
+
+# Conclusion
+
+I found no significant change before or after including covariates. In my data analysis, `Population` and `Sex` as covariates do not seem to impact the GWAS analysis result.
+
