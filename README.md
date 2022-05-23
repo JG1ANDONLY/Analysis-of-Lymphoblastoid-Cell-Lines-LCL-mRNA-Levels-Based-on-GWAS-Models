@@ -12,6 +12,20 @@ I am interested in studying if **population and gender** could cause the express
 
 ## Methods
 
+1. No covariates
+
+I built a linear model having genotype data as the independent variable, and phenotype data as the dependent variable with no covariates included. Then, I made manhattan plots and QQ plots and observed that 3 out of 5 phenotypes indicate potential causal polymorphism sites, and their QQ plots are ideal- most of the p-values observed follow a uniform distribution (i.e. they are not in linkage disequilibrium with a causal polymorphism so the null hypothesis is correct!) but the few that were in linkage disequilibrium with a causal polymorphism  produce significant p-values (extremely low = extremely high -log(p-values)) in the tail. However, the remaining 2 phenotypes do not have ideal manhattan plots and QQ plots. So I decided to create linear models with two covariates **Population and Gender** included.
+
+2. With covariates
+
+After including **Population and Gender** as covariates, I discovered no significant change to the linear model without covariates. The same 3 phenotype mentioned above still indicate 
+
+That means, 
+
+
+
+
+
 ## Discussion
 
 There are some possible further research that we can carry out in the future. For example, we can refer to UCSC genome browser for nucleotide/codon letters and then hypothesize the mRNA levels. This will require a lot of biochemistry backgrounds.
