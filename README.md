@@ -14,7 +14,11 @@ I am interested in studying if **population and gender** could cause the express
 
 ## Discussion
 
+There are some possible further research that we can carry out in the future. For example, we can refer to UCSC genome browser for nucleotide/codon letters and then hypothesize the mRNA levels. This will require a lot of biochemistry backgrounds.
+
 ## Conclusion
+
+I found no significant change before or after including covariates. In my data analysis, **Population and Gender** as covariates do not seem to impact the GWAS analysis result significantly.
 
 ## References
 
