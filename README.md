@@ -18,13 +18,7 @@ I built a linear model having genotype data as the independent variable, and phe
 
 2. With covariates
 
-After including **Population and Gender** as covariates, I discovered no significant change to the linear model without covariates. The same 3 phenotype mentioned above still indicate 
-
-That means, 
-
-
-
-
+After including **Population and Gender** as covariates, I discovered no significant change to the linear model without covariates. The same 3 phenotype mentioned above still indicate causal polymorphisms.
 
 ## Discussion
 
