@@ -4,7 +4,7 @@
 
 Lymphoblastoid cell lines (LCLs) are established through the transformation of peripheral B lymphocytes by Epstein-Barr virus (EBV) (Sie, et al.). LCLs are often used as surrogates for peripheral blood lymphocytes (Osorio, et al.) by researchers.
 
-In this project, I performed GWAS analysis on the lymphoblastoid cell lines (LCL) mRNA levels quantified through RNA sequencing from 4 different European populations. I also analyzed genotype and phenotype data by employing two different strategies: excluding covariates or including covariates with 50,000 of the SNP genotypes for 344 samples from the CEU (Utah residents with European ancestry), FIN (Finns), GBR (British) and, TSI (Toscani) population.
+In this project, I performed GWAS analysis on the lymphoblastoid cell lines (LCL) mRNA levels quantified through RNA sequencing from 4 different European populations. With gender and population as 2 possible covariates, I also analyzed genotype and phenotype data by employing two different strategies: excluding both covariates or including both covariates (or one at a single time) with 50,000 of the SNP genotypes for 344 samples from the CEU (Utah residents with European ancestry), FIN (Finns), GBR (British) and, TSI (Toscani) population.
 
 **Here is the link to the data source: Genetic European Variation in Health and Disease (gEUVADIS) (http://www.internationalgenome.org/data-portal/data-collection/geuvadis/)**
 
