@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Lymphoblastoid cell lines (LCLs) are established through the transformation of peripheral B lymphocytes by the Epstein-Barr virus (EBV) (Sie, et al.). LCLs are often used as surrogates for peripheral blood lymphocytes (Osorio, et al.) by researchers.
+Lymphoblastoid cell lines (LCLs) are established through the transformation of peripheral B lymphocytes by the Epstein-Barr virus (EBV) (Sie et al., 2009). LCLs are often used as surrogates for peripheral blood lymphocytes (Osorio et al., 2019) by researchers.
 
 In this project, I performed GWAS analysis on the lymphoblastoid cell lines (LCL) mRNA levels quantified through RNA sequencing from 4 European populations. With gender and population as two covariates, I also analyzed genotype and phenotype data by employing two different strategies: excluding both covariates and including both covariates with 50,000 of the SNP genotypes for 344 samples from the CEU (Utah residents with European ancestry), FIN (Finns), GBR (British) and, TSI (Toscani) population.
 
@@ -30,6 +30,6 @@ I found no significant change before or after including covariates. In my data a
 
 ## References
 
-Sie, L., S. Loong, and E. K. Tan. "Utility of lymphoblastoid cell lines." *Journal of neuroscience research* 87.9 (2009): 1953-1959.
+Sie, L., Loong, S., & Tan, E. K. (2009). Utility of lymphoblastoid cell lines. *Journal of neuroscience research*, *87*(9), 1953-1959.
 
-Osorio, Daniel, et al. "Single-cell RNA sequencing of a European and an African lymphoblastoid cell line." *Scientific data* 6.1 (2019): 1-8.
+Osorio, D., Yu, X., Yu, P., Serpedin, E., & Cai, J. J. (2019). Single-cell RNA sequencing of a European and an African lymphoblastoid cell line. *Scientific data*, *6*(1), 1-8.
